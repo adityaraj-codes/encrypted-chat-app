@@ -1,0 +1,152 @@
+import customtkinter as ctk
+import random
+
+ctk.set_appearance_mode("dark")
+ctk.set_default_color_theme("dark-blue")
+
+
+class ChatApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Encrypted Chat App")
+        self.root.geometry("400x600")
+
+        self.username = None
+        self.user_colors = {}  # store username → (tab_color, bubble_color, text_color)
+
+        self.login_screen()
+
+    def login_screen(self):
+        self.clear_window()
+
+        self.login_frame = ctk.CTkFrame(self.root, corner_radius=15)
+        self.login_frame.pack(pady=120, padx=40, fill="both", expand=True)
+
+        label = ctk.CTkLabel(self.login_frame,
+                             text="Enter your name",
+                             font=("Arial", 18, "bold"))
+        label.pack(pady=20)
+
+        self.username_entry = ctk.CTkEntry(self.login_frame, placeholder_text="Your Name")
+        self.username_entry.pack(pady=15)
+        self.username_entry.focus()
+        login_button = ctk.CTkButton(self.login_frame, text="Login",
+                                     command=self.start_chat)
+        login_button.pack(pady=10)
+        self.username_entry.bind("<Return>", lambda event: self.start_chat())
+
+    def start_chat(self):
+        name = self.username_entry.get().strip()
+        if not name:
+            return
+        self.username = name
+        self.chat_screen()
+
+    def chat_screen(self):
+        self.clear_window()
+
+        self.chat_frame = ctk.CTkFrame(self.root, corner_radius=0)
+        self.chat_frame.pack(fill="both", expand=True)
+
+        # Scrollable chat area with two columns (left and right)
+        self.chat_area = ctk.CTkScrollableFrame(self.chat_frame, corner_radius=0,
+                                                fg_color="#121212")
+        self.chat_area.pack(fill="both", expand=True, padx=10, pady=10)
+
+        # configure two columns
+        self.chat_area.grid_columnconfigure(0, weight=1)
+        self.chat_area.grid_columnconfigure(1, weight=1)
+
+        # Bottom entry bar
+        self.bottom_frame = ctk.CTkFrame(self.chat_frame, corner_radius=0)
+        self.bottom_frame.pack(fill="x")
+
+        self.msg_entry = ctk.CTkEntry(self.bottom_frame, placeholder_text="Type a message")
+        self.msg_entry.pack(side="left", fill="x", expand=True, padx=10, pady=10)
+        self.msg_entry.bind("<Return>", lambda event: self.send_message())
+        self.msg_entry.focus()
+        
+        send_button = ctk.CTkButton(self.bottom_frame, text="Send",
+                                    command=self.send_message, width=70)
+        send_button.pack(side="right", padx=10, pady=10)
+
+        # Temporary simulate button
+        simulate_button = ctk.CTkButton(self.bottom_frame, text="Simulate Incoming",
+                                        command=self.simulate_other_user, width=130)
+        simulate_button.pack(side="right", padx=5, pady=10)
+
+        self.next_row = 0
+
+    def get_user_colors(self, user):
+        if user not in self.user_colors:
+            base_colors = [
+                ("#2f1f37", "#8e44ad", "#f7eefe"),  # purple
+                ("#1d2b3b", "#2980b9", "#ecf6fb"),  # blue
+                ("#1f3027", "#27ae60", "#e8f9f1"),  # green
+                ("#382313", "#d35400", "#fff0e5"),  # orange
+                ("#331818", "#c0392b", "#fdecea"),  # red
+                ("#193633", "#16a085", "#eafff9"),  # teal
+                ("#2a2a2a", "#7f8c8d", "#f0f0f0"),  # grey
+                ("#2c2240", "#9b59b6", "#f6ebff")   # violet
+            ]
+            self.user_colors[user] = random.choice(base_colors)
+        return self.user_colors[user]
+
+    def add_message(self, sender, msg, from_self=False):
+        wrapper = ctk.CTkFrame(self.chat_area, fg_color="#121212", corner_radius=0)
+
+        if from_self:
+            tab_color, bubble_color, text_color = "#2f1f37", "#8e44ad", "#f7eefe"
+            col = 1
+            anchor_side = 'e'
+        else:
+            tab_color, bubble_color, text_color = self.get_user_colors(sender)
+            col = 0
+            anchor_side = 'w'
+
+        sender_tab = ctk.CTkLabel(wrapper,
+                                  text=sender,
+                                  font=("Arial", 9, "bold"),
+                                  text_color=text_color,
+                                  fg_color=tab_color,
+                                  corner_radius=6)
+        sender_tab.pack(anchor=anchor_side, padx=(5, 5), pady=(0, 2))
+
+        bubble = ctk.CTkFrame(wrapper, fg_color=bubble_color, corner_radius=15)
+        msg_label = ctk.CTkLabel(bubble, text=msg, text_color="#ffffff",
+                                 font=("Arial", 13), wraplength=250, justify="left")
+        msg_label.pack(padx=10, pady=8)
+        bubble.pack(anchor=anchor_side, padx=(5, 5), pady=(0, 8))
+
+        wrapper.grid(row=self.next_row, column=col,
+                     sticky='w' if col == 0 else 'e', padx=10, pady=4, columnspan=1)
+        self.next_row += 1
+
+        self.chat_area.update_idletasks()
+        try:
+            self.chat_area._parent_canvas.yview_moveto(1.0)
+        except Exception:
+            pass
+
+    def send_message(self):
+        msg = self.msg_entry.get().strip()
+        if not msg:
+            return
+        self.add_message(self.username, msg, from_self=True)
+        self.msg_entry.delete(0, "end")
+
+    def simulate_other_user(self):
+        other_users = ["Alice", "Bob", "Charlie", "David"]
+        sender = random.choice(other_users)
+        msg = random.choice(["Hello!", "How are you?", "Nice work!", "Cool project!", "👍"])
+        self.add_message(sender, msg, from_self=False)
+
+    def clear_window(self):
+        for widget in self.root.winfo_children():
+            widget.destroy()
+
+
+if __name__ == "__main__":
+    root = ctk.CTk()
+    app = ChatApp(root)
+    root.mainloop()
