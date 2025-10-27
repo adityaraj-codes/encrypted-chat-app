@@ -7,7 +7,7 @@ import textwrap
 from crypto_utils import generate_keys, encrypt_message, decrypt_message, serialize_public_key
 from cryptography.hazmat.primitives import serialization
 
-HOST = '10.185.137.174'
+HOST = '10.204.176.8'
 PORT = 65432
 
 private_key, public_key = generate_keys()
@@ -17,7 +17,7 @@ class ChatClient(ctk.CTk):
         super().__init__()
 
         ctk.set_appearance_mode("dark")
-        self.title("Secure Chat (RSA)")
+        self.title("NOVA")
         self.geometry("800x650") 
         self.configure(fg_color="#121212")
 
