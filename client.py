@@ -274,7 +274,7 @@ class ChatClient(ctk.CTk):
         key_frame.grid(row=0, column=0, sticky="ew", padx=10, pady=10)
         key_frame.grid_columnconfigure(0, weight=1)
         
-        ctk.CTkLabel(key_frame, text="🔑 Your Local RSA Keys (2048-bit)", font=("Arial", 14, "bold"), text_color="#f39c12").pack(pady=(5, 0))
+        ctk.CTkLabel(key_frame, text="🔑 Your Local AES & RSA Keys (2048-bit)", font=("Arial", 14, "bold"), text_color="#f39c12").pack(pady=(5, 0))
         
         pub_key_str = serialize_public_key(public_key)
         
@@ -291,14 +291,14 @@ class ChatClient(ctk.CTk):
         process_frame.grid(row=1, column=0, sticky="ew", padx=10, pady=5)
         process_frame.grid_columnconfigure(0, weight=1)
         
-        ctk.CTkLabel(process_frame, text="🔒 Crypto Process Overview (RSA/OAEP-SHA256)", font=("Arial", 14, "bold"), text_color="#f39c12").pack(pady=(5, 0))
+        ctk.CTkLabel(process_frame, text="🔒 Crypto Process Overview (AES & RSA/OAEP-SHA256)", font=("Arial", 14, "bold"), text_color="#f39c12").pack(pady=(5, 0))
 
         # A simple, static visualization flow.
         steps = [
-            "1. **Key Exchange**: Client generates an RSA key pair and sends its Public Key to the server.",
-            "2. **ENCRYPTION**: Plaintext message $\\xrightarrow{\\text{Other Client's Public Key (RSA)}}$ Encrypted Bytes",
+            "1. **Key Exchange**: Client generates an AES & RSA key pair and sends its Public Key to the server.",
+            "2. **ENCRYPTION**: Plaintext message $\\xrightarrow{\\text{Other Client's Public Key (AES & RSA)}}$ Encrypted Bytes",
             "3. **TRANSPORT**: Encrypted Bytes $\\xrightarrow{\\text{Server Broadcast}}$ Other Clients",
-            "4. **DECRYPTION**: Received Encrypted Bytes $\\xrightarrow{\\text{Your Private Key (RSA)}}$ Decrypted Plaintext"
+            "4. **DECRYPTION**: Received Encrypted Bytes $\\xrightarrow{\\text{Your Private Key (AES & RSA)}}$ Decrypted Plaintext"
         ]
 
         for step in steps:
