@@ -1,109 +1,123 @@
+# server.py
 import socket
 import threading
 import json
-import time 
 
-HOST = '0.0.0.0'
+HOST = "0.0.0.0"
 PORT = 65432
 
-clients = {}  
+server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+server.bind((HOST, PORT))
+server.listen()
 
-def broadcast(message, sender_socket):
-    """Sends the encrypted message to all clients except the sender."""
-    clients_to_remove = []
-    
-    for client in list(clients.keys()): 
-        if client != sender_socket:
-            try:
-                client.send(message)
-            except:
-                clients_to_remove.append(client)
-    
-    for client in clients_to_remove:
-        if client in clients:
-            print(f"Error sending to {clients[client]['addr']}, removing client.")
-            client.close()
-            del clients[client]
-            send_keys_update() 
+clients = {}       
+public_keys = {}   
 
-def send_keys_update():
-    """Compiles the list of current clients' public keys and broadcasts it to all of them."""
-    keys = {
-        f"{info['addr'][0]}:{info['addr'][1]}": info['public_key'] 
-        for info in clients.values() 
-        if info.get('addr') 
-    }
-    keys_json = json.dumps(keys).encode()
-    
-    for client in list(clients.keys()): 
+print(f"[LISTENING] Server running on {HOST}:{PORT}")
+
+def broadcast_raw(data: bytes, sender_conn):
+    """Forward raw bytes to all clients except the sender."""
+    for client in list(clients.keys()):
+        if client is sender_conn:
+            continue
         try:
-            client.send(keys_json)
+            client.sendall(data)
         except Exception as e:
-            print(f"Failed to send key update to {clients.get(client, {}).get('addr', 'Unknown')}: {e}")
-            client.close()
-            if client in clients:
-                del clients[client]
+            print(f"[ERROR] Sending to {clients[client]}: {e}")
+            try:
+                client.close()
+            except:
+                pass
+            clients.pop(client, None)
 
-
-def handle_client(client_socket):
+def send_public_keys_update():
+    """Send the JSON public-key registry to all connected clients."""
     try:
-        # 1. Receive Public Key (First Message)
-        pubkey_data = client_socket.recv(4096).decode()
-        
-        client_address = client_socket.getpeername() 
-        clients[client_socket] = {'public_key': pubkey_data, 'addr': client_address}
-        print(f"Received public key from {client_address}")
-
-        # 2. Update all clients with the new key list
-        send_keys_update()
-
-        # 3. Handle Chat Messages
-        while True:
-            message = client_socket.recv(8192) 
-            if not message:
-                break
-            
-            # Message is an encrypted byte string, broadcast it as is
-            broadcast(message, client_socket)
-
+        payload = json.dumps(public_keys).encode()
     except Exception as e:
-        if client_socket in clients:
-            print(f"Error for {clients[client_socket]['addr']}: {e}")
-    
-    finally:
-        if client_socket in clients:
-            addr_info = clients[client_socket]['addr']
-            print(f"Connection closed {addr_info}")
-            del clients[client_socket]
-            client_socket.close()
-            send_keys_update()
-        else:
-            client_socket.close()
-
-
-def start_server():
-    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    
-    # CORRECTION for WinError 10048: Allows the socket address to be reused immediately.
-    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) 
-    
-    try:
-        server.bind((HOST, PORT))
-    except OSError as e:
-        print(f"\n[CRITICAL ERROR] Could not bind to {HOST}:{PORT}. ({e})")
-        print("Please check if another server instance is running or if the port is in use.")
+        print(f"[ERROR] Could not json-encode public keys: {e}")
         return
 
-    server.listen()
-    print(f"Server started on {HOST}:{PORT}")
-    print("Waiting for connections...")
+    for client in list(clients.keys()):
+        try:
+            client.sendall(payload)
+        except Exception as e:
+            print(f"[ERROR] Failed to send keys update to {clients[client]}: {e}")
+            try:
+                client.close()
+            except:
+                pass
+            clients.pop(client, None)
 
+def handle_client(conn, addr):
+    addr_str = f"{addr[0]}:{addr[1]}"
+    print(f"[NEW CONNECTION] {addr_str}")
+
+    try:
+        # Expect intro message: username::public_key_pem
+        intro = conn.recv(8192)
+        if not intro:
+            conn.close()
+            return
+
+        try:
+            intro_text = intro.decode()
+        except:
+            # If decoding fails, reject connection
+            print(f"[INVALID INTRO] {addr_str} (not UTF-8)")
+            conn.close()
+            return
+
+        if "::" not in intro_text:
+            print(f"[INVALID INTRO FORMAT] {addr_str}: {intro_text[:60]!r}")
+            conn.close()
+            return
+
+        username, pub_pem = intro_text.split("::", 1)
+        username = username.strip()
+        pub_pem = pub_pem.strip()
+
+        # Store client
+        clients[conn] = (addr, username)
+        public_keys[addr_str] = pub_pem
+
+        print(f"{username} joined from {addr_str}")
+
+        # notify everyone of keys update
+        send_public_keys_update()
+
+        # Now handle normal traffic — server only relays raw bytes
+        while True:
+            data = conn.recv(8192)
+            if not data:
+                break
+            # Raw bytes forwarded to other clients
+            broadcast_raw(data, conn)
+
+    except Exception as e:
+        print(f"[ERROR] {addr_str}: {e}")
+
+    finally:
+        # Cleanup
+        if conn in clients:
+            _, username = clients.pop(conn)
+            print(f"{username} disconnected.")
+        if addr_str in public_keys:
+            public_keys.pop(addr_str, None)
+        try:
+            conn.close()
+        except:
+            pass
+        send_public_keys_update()
+
+
+def start():
     while True:
-        client_socket, addr = server.accept()
-        print(f"New connection from {addr}")
-        thread = threading.Thread(target=handle_client, args=(client_socket,))
-        thread.daemon = True 
-        thread.start()
+        conn, addr = server.accept()
+        t = threading.Thread(target=handle_client, args=(conn, addr), daemon=True)
+        t.start()
+
 
 if __name__ == "__main__":
-    start_server()
+    start()
