@@ -10,8 +10,8 @@ server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 server.bind((HOST, PORT))
 server.listen()
 
-clients = {}       # conn -> addr_tuple
-public_keys = {}   # "ip:port" -> pem_str
+clients = {}       # conn -> addr_str
+client_data = {}   # addr_str -> {"username": str, "pem": str}
 
 print(f"[LISTENING] Server running on {HOST}:{PORT}")
 
@@ -30,12 +30,12 @@ def broadcast_raw(data: bytes, sender_conn):
                 pass
             clients.pop(client, None)
 
-def send_public_keys_update():
-    """Send the JSON public-key registry to all connected clients."""
+def send_client_data_update():
+    """Send the JSON client_data registry to all connected clients."""
     try:
-        payload = json.dumps(public_keys).encode()
+        payload = json.dumps(client_data).encode() # Send client_data
     except Exception as e:
-        print(f"[ERROR] Could not json-encode public keys: {e}")
+        print(f"[ERROR] Could not json-encode client data: {e}")
         return
 
     for client in list(clients.keys()):
@@ -52,9 +52,9 @@ def send_public_keys_update():
 def handle_client(conn, addr):
     addr_str = f"{addr[0]}:{addr[1]}"
     print(f"[NEW CONNECTION] {addr_str}")
+    username = "Unknown" # Default
 
     try:
-        # Expect intro message: username::public_key_pem
         intro = conn.recv(8192)
         if not intro:
             conn.close()
@@ -63,7 +63,6 @@ def handle_client(conn, addr):
         try:
             intro_text = intro.decode()
         except:
-            # If decoding fails, reject connection
             print(f"[INVALID INTRO] {addr_str} (not UTF-8)")
             conn.close()
             return
@@ -78,37 +77,35 @@ def handle_client(conn, addr):
         pub_pem = pub_pem.strip()
 
         # Store client
-        clients[conn] = (addr, username)
-        public_keys[addr_str] = pub_pem
+        clients[conn] = addr_str # Map connection to its address string
+        client_data[addr_str] = {"username": username, "pem": pub_pem} # Store user data by address
 
         print(f"{username} joined from {addr_str}")
 
-        # notify everyone of keys update
-        send_public_keys_update()
+        send_client_data_update() # notify everyone
 
-        # Now handle normal traffic — server only relays raw bytes
         while True:
             data = conn.recv(8192)
             if not data:
                 break
-            # Raw bytes forwarded to other clients
             broadcast_raw(data, conn)
 
     except Exception as e:
-        print(f"[ERROR] {addr_str}: {e}")
+        print(f"[ERROR] {addr_str} ({username}): {e}")
 
     finally:
         # Cleanup
         if conn in clients:
-            _, username = clients.pop(conn)
-            print(f"{username} disconnected.")
-        if addr_str in public_keys:
-            public_keys.pop(addr_str, None)
+            addr_str_to_remove = clients.pop(conn)
+            if addr_str_to_remove in client_data:
+                # Get username from the dict before deleting
+                username = client_data.pop(addr_str_to_remove)["username"]
+                print(f"{username} disconnected.")
         try:
             conn.close()
         except:
             pass
-        send_public_keys_update()
+        send_client_data_update() # Notify everyone of the departure
 
 
 def start():

@@ -6,7 +6,9 @@ import textwrap
 from crypto_utils import generate_keys, encrypt_message, decrypt_message, serialize_public_key
 from cryptography.hazmat.primitives import serialization
 
-HOST = '10.185.137.174'
+# IMPORTANT: Change this to your server's IP address
+HOST = '127.0.0.1' # Use '127.0.0.1' if u on the same pc like the localhost
+#If u on diff pcs use that ipv4 address
 PORT = 65432
 
 # generate keys once
@@ -33,6 +35,7 @@ class ChatClient(ctk.CTk):
                                            fg_color="#2c2c2c", border_color="#333333")
         self.username_entry.pack(pady=(0, 20), padx=40, fill='x')
         self.username_entry.focus()
+        self.username_entry.bind("<Return>", lambda event: self.start_chat()) # Bind Enter key
 
         self.login_button = ctk.CTkButton(self.login_frame, text="Login",
                                           command=self.start_chat,
@@ -41,12 +44,15 @@ class ChatClient(ctk.CTk):
 
         # runtime fields
         self.client_socket = None
-        self.clients_public_keys = {}  # addr_str -> cryptography public key object
         self.running = False
         self.username = None
+        
+        # Updated data structures
+        self.client_data = {}      # Will store addr_str -> {"username": ..., "pem": ..., "pub_key": ...}
+        self.target_address = None # This will store the addr_str of the user you want to DM
 
     # -------- LOGIN HANDLER --------
-    def start_chat(self):
+    def start_chat(self, *args): # Added *args to handle the event from Enter key
         uname = self.username_entry.get().strip()
         if not uname:
             self.username_entry.configure(placeholder_text="Please enter a username!")
@@ -95,7 +101,7 @@ class ChatClient(ctk.CTk):
         self.main_frame.grid_columnconfigure(0, weight=1)
         self.main_frame.grid_rowconfigure(1, weight=1)
 
-        self.chat_header = ctk.CTkLabel(self.main_frame, text="Secure Conversation",
+        self.chat_header = ctk.CTkLabel(self.main_frame, text="Secure Conversation (Everyone)",
                                         font=("Arial", 16, "bold"), text_color="#ffffff",
                                         fg_color="#333333", corner_radius=8)
         self.chat_header.grid(row=0, column=0, sticky="ew", padx=5, pady=(0, 5), ipady=5)
@@ -150,30 +156,62 @@ class ChatClient(ctk.CTk):
         # refresh user list initially (you are the only known user until server responds)
         self.refresh_user_list()
 
-    # ---------- MESSAGE FUNCTIONS ----------
+    # -------- NEW HELPER FUNCTION --------
+    def set_target(self, addr_str):
+        """Sets the target for private messages."""
+        if addr_str is None:
+            # Broadcasting to everyone
+            self.target_address = None
+            self.chat_header.configure(text="Secure Conversation (Everyone)")
+            
+        elif addr_str in self.client_data:
+            # Targeting a specific user
+            self.target_address = addr_str
+            username = self.client_data[addr_str]["username"]
+            self.chat_header.configure(text=f"🔒 Private Chat with {username}")
+
+    # ---------- MESSAGE FUNCTIONS (UPDATED) ----------
     def send_message(self, *args):
         message = self.msg_entry.get().strip()
         if not message:
             return
 
-        if not self.clients_public_keys:
-            self.add_message_bubble("No other clients online to send to.", sender='system')
-            self.msg_entry.delete(0, 'end')
-            return
-
         full_message = f"{self.username}: {message}"
         sent_ok = False
 
-        # Encrypt for each recipient's public key and send raw bytes to server (server will forward)
-        for addr_str, pub_key_obj in list(self.clients_public_keys.items()):
+        if self.target_address:
+            # --- PRIVATE MESSAGE ---
+            if self.target_address not in self.client_data:
+                self.add_message_bubble(f"Error: User is no longer online.", 'system')
+                return
+            
             try:
-                encrypted = encrypt_message(pub_key_obj, full_message)
+                target_info = self.client_data[self.target_address]
+                target_key = target_info["pub_key"] # Get the loaded key object
+                
+                encrypted = encrypt_message(target_key, full_message)
                 self.client_socket.sendall(encrypted)
                 sent_ok = True
             except Exception as e:
-                self.add_message_bubble(f"Error encrypting/sending to {addr_str}: {e}", sender='system')
+                self.add_message_bubble(f"Error sending private message: {e}", sender='system')
+
+        else:
+            # --- BROADCAST (Everyone) ---
+            if not self.client_data:
+                self.add_message_bubble("No other clients online to send to.", sender='system')
+                self.msg_entry.delete(0, 'end')
+                return
+                
+            for addr_str, info in self.client_data.items():
+                try:
+                    encrypted = encrypt_message(info["pub_key"], full_message)
+                    self.client_socket.sendall(encrypted)
+                    sent_ok = True
+                except Exception as e:
+                    self.add_message_bubble(f"Error sending to {info['username']}: {e}", sender='system')
 
         if sent_ok:
+            # Show our own message locally (just the message, not "Username: message")
             self.add_message_bubble(message, sender='me')
 
         self.msg_entry.delete(0, 'end')
@@ -194,12 +232,12 @@ class ChatClient(ctk.CTk):
                 except Exception:
                     pass
 
-                # 2) Try parsing as a public-key JSON update
+                # 2) Try parsing as a client_data JSON update
                 try:
                     decoded = data.decode()
-                    keys_dict = json.loads(decoded)
-                    # server sends mapping of addr_str -> pem
-                    self.update_clients_public_keys(keys_dict)
+                    data_dict = json.loads(decoded)
+                    # Call the RENAMED function
+                    self.update_client_data(data_dict)
                     continue
                 except Exception:
                     # not JSON - ignore
@@ -216,53 +254,79 @@ class ChatClient(ctk.CTk):
                 self.running = False
                 break
 
+    # --- UPDATED ---
     def refresh_user_list(self):
         # clear
         for widget in getattr(self, "user_widgets", []):
             widget.destroy()
         self.user_widgets.clear()
 
-        # me
-        try:
-            local_addr_tuple = self.client_socket.getsockname()
-            local_addr_str = f"{local_addr_tuple[0]}:{local_addr_tuple[1]}"
-        except:
-            local_addr_str = "unknown"
-        me_label = ctk.CTkLabel(self.users_list_frame, text=f"• You ({local_addr_str})", font=("Arial", 12, "bold"), text_color="#ffffff")
+        # 1. Add "Everyone" button
+        everyone_btn = ctk.CTkButton(
+            self.users_list_frame, 
+            text="📢 Everyone", 
+            font=("Arial", 12, "bold"),
+            fg_color="#333333",
+            hover_color="#444444",
+            command=lambda: self.set_target(None) # Set target to None
+        )
+        everyone_btn.pack(anchor='w', padx=10, pady=(5, 5), fill='x')
+        self.user_widgets.append(everyone_btn)
+
+        # 2. Add "You" label
+        me_label = ctk.CTkLabel(self.users_list_frame, text=f"• You ({self.username})", font=("Arial", 12, "bold"), text_color="#ffffff")
         me_label.pack(anchor='w', padx=10, pady=(5, 2))
         self.user_widgets.append(me_label)
 
-        # others
-        for addr_str in self.clients_public_keys.keys():
-            user_label = ctk.CTkLabel(self.users_list_frame, text=f"• Other Client ({addr_str})", font=("Arial", 12), text_color="#cccccc")
-            user_label.pack(anchor='w', padx=10, pady=2)
-            self.user_widgets.append(user_label)
+        # 3. Add other users (as buttons)
+        for addr_str, info in self.client_data.items():
+            username = info.get("username", "Unknown")
+            
+            # Use a lambda to capture the current addr_str
+            user_btn = ctk.CTkButton(
+                self.users_list_frame, 
+                text=f"• {username}", 
+                font=("Arial", 12),
+                fg_color="transparent",
+                hover_color="#333333",
+                anchor="w", # Align text left
+                command=lambda a=addr_str: self.set_target(a)
+            )
+            user_btn.pack(anchor='w', padx=10, pady=2, fill='x')
+            self.user_widgets.append(user_btn)
 
-        count = len(self.clients_public_keys) + 1
+        count = len(self.client_data) + 1
         self.users_header.configure(text=f"Active Users ({count})")
 
-    def update_clients_public_keys(self, keys_dict):
-        """keys_dict is addr_str -> pem string"""
-        self.clients_public_keys.clear()
+    # --- UPDATED ---
+    def update_client_data(self, data_dict):
+        """data_dict is addr_str -> {"username": ..., "pem": ...}"""
+        self.client_data.clear() # Clear old data
+        
         try:
             local_addr_tuple = self.client_socket.getsockname()
             local_addr_str = f"{local_addr_tuple[0]}:{local_addr_tuple[1]}"
         except:
             local_addr_str = None
 
-        for addr_str, pem_str in keys_dict.items():
-            # skip our own address if present
+        for addr_str, info in data_dict.items():
             if addr_str == local_addr_str:
-                continue
+                continue # Skip ourselves
+            
             try:
-                pub_key = serialization.load_pem_public_key(pem_str.encode())
-                self.clients_public_keys[addr_str] = pub_key
+                # Load the public key from the pem string and store it
+                info["pub_key"] = serialization.load_pem_public_key(info["pem"].encode())
+                self.client_data[addr_str] = info
             except Exception as e:
                 print(f"Failed to load public key for {addr_str}: {e}")
+        
+        # Check if your target is still online
+        if self.target_address and self.target_address not in self.client_data:
+             self.add_message_bubble(f"Targeted user went offline. Switching to public chat.", 'system')
+             self.set_target(None) # Reset to "Everyone"
 
-        # show count update and refresh UI
-        self.add_message_bubble(f"[Updated: {len(self.clients_public_keys)} other clients online]", sender='system')
-        self.refresh_user_list()
+        self.add_message_bubble(f"[Updated: {len(self.client_data)} other clients online]", sender='system')
+        self.refresh_user_list() # Update the UI
 
     def add_message_bubble(self, text, sender='other'):
         color = "#2c2c2c"
