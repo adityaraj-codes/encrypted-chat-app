@@ -1,4 +1,3 @@
-# client.py
 import customtkinter as ctk
 import socket
 import threading
@@ -7,7 +6,7 @@ import textwrap
 from crypto_utils import generate_keys, encrypt_message, decrypt_message, serialize_public_key
 from cryptography.hazmat.primitives import serialization
 
-HOST = '127.0.0.1'
+HOST = '10.185.137.174'
 PORT = 65432
 
 # generate keys once
@@ -22,7 +21,7 @@ class ChatClient(ctk.CTk):
         self.geometry("400x300")
         self.configure(fg_color="#121212")
 
-        # login UI (keeps it minimal and consistent)
+        # login UI
         self.login_frame = ctk.CTkFrame(self, fg_color="#1e1e1e", corner_radius=15)
         self.login_frame.pack(expand=True, fill="both", padx=50, pady=50)
 
@@ -30,7 +29,7 @@ class ChatClient(ctk.CTk):
                      text_color="#4CAF50").pack(pady=(20, 10))
         ctk.CTkLabel(self.login_frame, text="Enter your username", font=("Arial", 13),
                      text_color="#cccccc").pack(pady=(0, 5))
-        self.username_entry = ctk.CTkEntry(self.login_frame, placeholder_text="e.g. Adi",
+        self.username_entry = ctk.CTkEntry(self.login_frame, placeholder_text="Username",
                                            fg_color="#2c2c2c", border_color="#333333")
         self.username_entry.pack(pady=(0, 20), padx=40, fill='x')
         self.username_entry.focus()
@@ -54,7 +53,6 @@ class ChatClient(ctk.CTk):
             return
         self.username = uname
 
-        # remove login frame and build main UI (keeps your exact UI)
         self.login_frame.pack_forget()
         self.build_main_ui()
 
@@ -79,7 +77,7 @@ class ChatClient(ctk.CTk):
         t = threading.Thread(target=self.receive_messages, daemon=True)
         t.start()
 
-    # Build the main chat UI (this is your original layout — unchanged)
+    # Build the main chat UI 
     def build_main_ui(self):
         self.title(f"NOVA - {self.username}")
         self.geometry("800x650")
@@ -266,7 +264,6 @@ class ChatClient(ctk.CTk):
         self.add_message_bubble(f"[Updated: {len(self.clients_public_keys)} other clients online]", sender='system')
         self.refresh_user_list()
 
-    # UI bubble and details window unchanged / copy of original code:
     def add_message_bubble(self, text, sender='other'):
         color = "#2c2c2c"
         anchor = 'w'
