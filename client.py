@@ -7,7 +7,7 @@ import textwrap
 from crypto_utils import generate_keys, encrypt_message, decrypt_message, serialize_public_key
 from cryptography.hazmat.primitives import serialization
 
-HOST = '10.185.137.174'
+HOST = '127.0.0.1'
 PORT = 65432
 
 # generate keys once
@@ -30,7 +30,7 @@ class ChatClient(ctk.CTk):
                      text_color="#4CAF50").pack(pady=(20, 10))
         ctk.CTkLabel(self.login_frame, text="Enter your username", font=("Arial", 13),
                      text_color="#cccccc").pack(pady=(0, 5))
-        self.username_entry = ctk.CTkEntry(self.login_frame, placeholder_text="Username",
+        self.username_entry = ctk.CTkEntry(self.login_frame, placeholder_text="e.g. Adi",
                                            fg_color="#2c2c2c", border_color="#333333")
         self.username_entry.pack(pady=(0, 20), padx=40, fill='x')
         self.username_entry.focus()

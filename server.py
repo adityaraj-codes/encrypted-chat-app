@@ -3,7 +3,7 @@ import socket
 import threading
 import json
 
-HOST = "0.0.0.0"
+HOST = "127.0.0.1"
 PORT = 65432
 
 server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -11,8 +11,8 @@ server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 server.bind((HOST, PORT))
 server.listen()
 
-clients = {}       
-public_keys = {}   
+clients = {}       # conn -> addr_tuple
+public_keys = {}   # "ip:port" -> pem_str
 
 print(f"[LISTENING] Server running on {HOST}:{PORT}")
 
