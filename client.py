@@ -6,9 +6,7 @@ import textwrap
 from crypto_utils import generate_keys, encrypt_message, decrypt_message, serialize_public_key
 from cryptography.hazmat.primitives import serialization
 
-# IMPORTANT: Change this to your server's IP address
-HOST = '127.0.0.1' # Use '127.0.0.1' if u on the same pc like the localhost
-#If u on diff pcs use that ipv4 address
+HOST = '127.0.0.1' 
 PORT = 65432
 
 # generate keys once
@@ -156,7 +154,7 @@ class ChatClient(ctk.CTk):
         # refresh user list initially (you are the only known user until server responds)
         self.refresh_user_list()
 
-    # -------- NEW HELPER FUNCTION --------
+    # --------HELPER FUNCTION--------
     def set_target(self, addr_str):
         """Sets the target for private messages."""
         if addr_str is None:
@@ -170,7 +168,7 @@ class ChatClient(ctk.CTk):
             username = self.client_data[addr_str]["username"]
             self.chat_header.configure(text=f"🔒 Private Chat with {username}")
 
-    # ---------- MESSAGE FUNCTIONS (UPDATED) ----------
+    # ---------- MESSAGE FUNCTIONS ----------
     def send_message(self, *args):
         message = self.msg_entry.get().strip()
         if not message:
@@ -254,7 +252,6 @@ class ChatClient(ctk.CTk):
                 self.running = False
                 break
 
-    # --- UPDATED ---
     def refresh_user_list(self):
         # clear
         for widget in getattr(self, "user_widgets", []):
@@ -298,7 +295,6 @@ class ChatClient(ctk.CTk):
         count = len(self.client_data) + 1
         self.users_header.configure(text=f"Active Users ({count})")
 
-    # --- UPDATED ---
     def update_client_data(self, data_dict):
         """data_dict is addr_str -> {"username": ..., "pem": ...}"""
         self.client_data.clear() # Clear old data
